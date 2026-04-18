@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Dialog capture — prompts the user for a secret without echoing it anywhere.
+# Emits the value to stdout (for the pipeline).
+
+_has_gui_macos() {
+  [[ "$(uname -s)" == "Darwin" ]] && pgrep -q "WindowServer" 2>/dev/null
+}
+
+_has_tty() {
+  [[ -t 0 && -t 2 ]]
+}
+
+# dialog_capture <prompt-label>
+# Emits the captured value (no trailing newline) to stdout.
+# On cancel: exit 4 (CANCELLED). On no-GUI and no-TTY: exit 3 (NO_GUI).
+dialog_capture() {
+  local prompt="${1:-secret}"
+  local value=""
+
+  if _has_gui_macos; then
+    # osascript hidden-input dialog. Value comes back on stdout.
+    # 2>/dev/null swallows the "user cancelled" stderr message.
+    value=$(osascript \
+      -e "tell application \"System Events\" to display dialog \"Enter $prompt (input hidden):\" default answer \"\" with hidden answer with title \"secret-capture\"" \
+      -e 'text returned of result' 2>/dev/null) || {
+      echo "CANCELLED" >&2
+      return 4
+    }
+  elif _has_tty; then
+    # TTY fallback: read -s suppresses echo.
+    printf 'Enter %s (hidden): ' "$prompt" >&2
+    IFS= read -rs value || { echo "CANCELLED" >&2; return 4; }
+    printf '\n' >&2
+  else
+    echo "NO_GUI: no WindowServer and no TTY available" >&2
+    return 3
+  fi
+
+  # Strip exactly one trailing newline (if any); preserve any internal characters.
+  value="${value%$'\n'}"
+
+  # Emit without trailing newline; adapters can handle as raw.
+  printf '%s' "$value"
+  value=""
+}
