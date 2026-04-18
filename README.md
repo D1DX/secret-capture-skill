@@ -47,7 +47,18 @@ More destinations are planned (Vercel, Netlify, Fly.io, HashiCorp Vault, AWS Sec
 
 - **macOS** (osascript dialog). Linux / Windows support is planned — see [Roadmap](#roadmap).
 - `bash` ≥ 4 (or `zsh`), `jq`, `curl`.
-- Per-destination tooling: `op` (1Password CLI), `gh` (GitHub CLI), `wrangler` (Cloudflare).
+- **`yq` (Go version, mikefarah/yq)** — for config + pattern file parsing. `brew install yq`. Without `yq`, the `1password`, `coolify`, `n8n` adapters cannot read their runtime config; `--expect` format validation also requires it.
+- `expect` — preinstalled on macOS; required by the `keychain` adapter.
+- Per-destination tooling (install the ones you plan to use):
+  - `op` — 1Password CLI (`brew install 1password-cli`)
+  - `gh` — GitHub CLI (`brew install gh`)
+  - `wrangler` — Cloudflare Workers CLI (`npm i -g wrangler`)
+
+One-liner for the full set on macOS:
+
+```bash
+brew install jq yq 1password-cli gh && npm i -g wrangler
+```
 
 ## Install
 
