@@ -1,0 +1,16 @@
+.DS_Store
+*.swp
+*.tmp
+# Per-user runtime config; should never be committed.
+config.yaml
+patterns.yaml
+# Scratch / local test artifacts.
+.scratch/
+*.test.local
+.env
+credentials.json
+*.har
+*.pem
+*.key
+GEMINI.md
+.gemini/settings.json

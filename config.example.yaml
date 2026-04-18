@@ -1,0 +1,88 @@
+# ~/.config/secret-capture/config.yaml
+#
+# Every field is optional; the skill falls back to sensible defaults.
+# `api_key_source` is a URI-like reference to where the skill should read its own
+# credentials (NOT the secret being captured — just the token used to talk to the
+# destination API). Supported schemes:
+#
+#   keychain:<service>            — macOS Keychain (default account = current user)
+#   keychain:<service>#<account>  — with explicit account
+#   env:<VAR_NAME>                — environment variable
+#   file:<path>                   — file (mode-checked: must be 0600)
+#   op:<op-ref>                   — 1Password CLI (e.g., op://Vault/Item/field)
+#   command:<shell-fragment>      — arbitrary shell (evaluated at invocation)
+
+adapters:
+  # Only enabled adapters are loaded at runtime.
+  enabled:
+    - 1password
+    - keychain
+    - gh-secret
+    - wrangler
+    - env-file
+  # The `generic` adapter accepts an arbitrary stdin-consuming shell fragment.
+  # Powerful but easy to misuse — opt in explicitly.
+  disabled:
+    - generic
+
+defaults:
+  1password:
+    vault: "Personal"
+    category: "API Credential"
+    field: "credential"
+
+  keychain:
+    # Uses $USER if unset.
+    account: "${USER}"
+
+  gh-secret:
+    # Default scope when --scope isn't passed.
+    scope: "repo"
+
+  wrangler:
+    # Set if you have multiple Cloudflare accounts.
+    # account_id: "your-account-id"
+
+  coolify:
+    url: "https://coolify.example.com"
+    api_key_source: "keychain:coolify-api"
+    # Whether env vars are preview-scoped by default.
+    is_preview: false
+
+  n8n:
+    instances:
+      production:
+        url: "https://n8n.example.com"
+        api_key_source: "keychain:n8n-production-api"
+      staging:
+        url: "https://staging-n8n.example.com"
+        api_key_source: "env:N8N_STAGING_API_KEY"
+
+  env-file:
+    # Used when --file is not passed.
+    default_path: ".env"
+    mode: "0600"
+
+dialog:
+  # Seconds before osascript auto-dismisses. macOS default is 120.
+  timeout_seconds: 120
+  # Fall back to TTY `read -s` if no WindowServer detected.
+  allow_tty_fallback: true
+  # Hard-fail if neither GUI nor TTY is available (e.g., SSH without -t).
+  allow_no_gui: false
+
+hygiene:
+  # When true, require --expect on every invocation.
+  enforce_format_validation: false
+  # When true, interactively confirm before --rotate overwrites an existing record.
+  require_rotation_confirm: true
+
+naming:
+  # When true, reject item/name values that don't match the pattern.
+  enforce_pattern: false
+  # Convention: {service}-{purpose} in kebab-case.
+  pattern: "^[a-z0-9]+(-[a-z0-9]+)+$"
+
+patterns:
+  # Path to user-supplied regex patterns for --expect. Merged with patterns/common.yaml.
+  # user_patterns_path: "~/.config/secret-capture/patterns.yaml"
