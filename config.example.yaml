@@ -25,7 +25,9 @@ adapters:
 defaults:
   1password:
     vault: "Personal"
-    category: "API Credential"
+    # Uppercase-underscore template id (see `op item template list`). Common values:
+    #   API_CREDENTIAL, LOGIN, PASSWORD, SECURE_NOTE, DATABASE, SERVER.
+    category: "API_CREDENTIAL"
     field: "credential"
 
   keychain:
