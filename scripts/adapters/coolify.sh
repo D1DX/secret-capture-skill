@@ -17,14 +17,17 @@ source "${SKILL_ROOT:?SKILL_ROOT not set}/scripts/lib/config.sh"
 APP_UUID=""
 KEY=""
 IS_PREVIEW="false"
-IS_BUILD_TIME="false"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --app-uuid) APP_UUID="$2"; shift 2 ;;
     --key) KEY="$2"; shift 2 ;;
     --preview) IS_PREVIEW="true"; shift ;;
-    --build-time) IS_BUILD_TIME="true"; shift ;;
+    # --build-time dropped: Coolify API (v4.0.0-beta.471) returns 422
+    # "is_build_time: This field is not allowed" on the envs POST endpoint.
+    # The stored record has an `is_buildtime` field (one word), defaulting to
+    # true, but it's not settable via POST. Use Coolify UI if you need to
+    # control it per variable.
     *) echo "USAGE_ERROR: unknown arg '$1'" >&2; exit 2 ;;
   esac
 done
@@ -57,8 +60,7 @@ jq -n \
   --arg k "$KEY" \
   --rawfile v /dev/stdin \
   --argjson pre "$IS_PREVIEW" \
-  --argjson build "$IS_BUILD_TIME" \
-  '{ key: $k, value: ($v | rtrimstr("\n")), is_preview: $pre, is_build_time: $build }' > "$body"
+  '{ key: $k, value: ($v | rtrimstr("\n")), is_preview: $pre }' > "$body"
 
 METHOD="POST"
 if [[ -n "$ROTATE" ]]; then
