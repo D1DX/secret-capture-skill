@@ -87,13 +87,30 @@ preflight_check "$TARGET" || exit $?
 
 [[ -z "$PROMPT_LABEL" ]] && PROMPT_LABEL="$TARGET"
 
-# Single subshell: dialog -> (optional validate) -> adapter.
-# Only the adapter's reference line reaches the caller's stdout.
+# Two-stage capture:
+#   1. dialog_capture → 0600 tempfile (exit code CHECKED before continuing)
+#   2. optional validate → same tempfile
+#   3. adapter reads from tempfile via stdin redirect
+#
+# Why: if dialog_capture is piped directly to the adapter, a CANCELLED dialog
+# (exit 4, empty stdout) still lets the adapter run with empty input and
+# possibly write an empty value at the destination before pipefail aborts.
+# Gating on the dialog's exit code BEFORE the adapter runs closes that gap.
+# Tempfile is 0600, shredded on exit — same threat model as the adapter
+# tempfiles (wrangler/coolify/n8n all already do this).
+
+umask 077
+valfile=$(mktemp -t sc-value-XXXXXX)
+cleanup_value() { shred -u "$valfile" 2>/dev/null || rm -f "$valfile"; }
+trap cleanup_value EXIT
+
+dialog_capture "$PROMPT_LABEL" > "$valfile" || exit $?
+
 if [[ -n "$EXPECT" ]]; then
-  dialog_capture "$PROMPT_LABEL" \
-    | validate_and_forward "$EXPECT" \
-    | ROTATE="$ROTATE" SKILL_ROOT="$SKILL_ROOT" bash "$ADAPTER_SCRIPT" ${ADAPTER_ARGS[@]+"${ADAPTER_ARGS[@]}"}
-else
-  dialog_capture "$PROMPT_LABEL" \
-    | ROTATE="$ROTATE" SKILL_ROOT="$SKILL_ROOT" bash "$ADAPTER_SCRIPT" ${ADAPTER_ARGS[@]+"${ADAPTER_ARGS[@]}"}
+  valfile_validated=$(mktemp -t sc-value-v-XXXXXX)
+  trap 'shred -u "$valfile" "$valfile_validated" 2>/dev/null || rm -f "$valfile" "$valfile_validated"' EXIT
+  validate_and_forward "$EXPECT" < "$valfile" > "$valfile_validated" || exit $?
+  mv "$valfile_validated" "$valfile"
 fi
+
+ROTATE="$ROTATE" SKILL_ROOT="$SKILL_ROOT" bash "$ADAPTER_SCRIPT" ${ADAPTER_ARGS[@]+"${ADAPTER_ARGS[@]}"} < "$valfile"

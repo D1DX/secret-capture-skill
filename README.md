@@ -45,8 +45,7 @@ More destinations are planned (Vercel, Netlify, Fly.io, HashiCorp Vault, AWS Sec
 
 ## Requirements
 
-- **macOS** (osascript dialog). Linux / Windows support is planned — see [Roadmap](#roadmap).
-  - **One-time permission**: grant the parent app (the one that runs `capture.sh` — usually Terminal, iTerm, VS Code, or Claude Code) **Automation → System Events** access in macOS **System Settings → Privacy & Security**. Without it, the dialog can't appear and osascript returns `AppleEvent timed out. (-1712)`. See [`docs/SECURITY.md`](./docs/SECURITY.md) for alternatives.
+- **macOS** (osascript dialog). Linux / Windows support is planned — see [Roadmap](#roadmap). No Automation permission required — dialog runs inside osascript itself, not via System Events.
 - `bash` ≥ 4 (or `zsh`), `jq`, `curl`.
 - **`yq` (Go version, mikefarah/yq)** — required for: `coolify` and `n8n` adapters (read runtime config), `1password` adapter (read user defaults), and `--expect` format validation (reads `patterns/common.yaml`). The `keychain`, `gh-secret`, `wrangler`, and `env-file` adapters work without `yq`. Install via `brew install yq`.
 - `expect` — preinstalled on macOS; required by the `keychain` adapter.

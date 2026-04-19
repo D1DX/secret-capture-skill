@@ -26,8 +26,15 @@ dialog_capture() {
   if _has_gui_macos; then
     # osascript hidden-input dialog. Value comes back on stdout.
     # 2>/dev/null swallows the "user cancelled" stderr message.
+    #
+    # Uses `display dialog` at the top level (not wrapped in
+    # `tell application "System Events"`) so osascript itself owns the dialog.
+    # Wrapping in System Events requires the parent app to have
+    # "Automation → System Events" in macOS Privacy & Security, which fails
+    # silently with AppleEvent -1712 when not granted. The top-level form
+    # has no such dependency.
     value=$(osascript \
-      -e "tell application \"System Events\" to display dialog \"Enter $prompt (input hidden):\" default answer \"\" with hidden answer with title \"secret-capture\"" \
+      -e "display dialog \"Enter $prompt (input hidden):\" default answer \"\" with hidden answer with title \"secret-capture\"" \
       -e 'text returned of result' 2>/dev/null) || {
       echo "CANCELLED" >&2
       return 4
