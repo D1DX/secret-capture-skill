@@ -50,6 +50,10 @@ Bash's `xtrace` mode prints every expanded command — including variable values
 
 `scripts/lib/dialog.sh:dialog_capture` defends against this by saving the caller's xtrace state, calling `set +x` on entry, and restoring the original state on exit. If you write a custom adapter that holds the value in a shell variable, **do the same** — wrap the value-touching block in `set +x` / `set -$_x_was`.
 
+## Status
+
+As of commit `9a08853`, the two bugs surfaced during initial smoke testing (CANCELLED-pipe allowed adapter to run with empty stdin; macOS Automation permission required for System Events) are **resolved**. No outstanding critical implementation risks remain in v1. Residual risks below are inherent to the local-secret-capture threat model, not implementation defects.
+
 ## Residual risks
 
 1. **In-process memory**: the value lives briefly in the memory of `osascript`, `expect`, `jq`, `curl`, and the dialog `TextField`. Same-UID processes with access to `/proc/<pid>/mem` can read them during execution. The skill does not use `mlock`.
