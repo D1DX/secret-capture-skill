@@ -32,6 +32,18 @@ The skill does **not** defend against:
 | **n8n response echo** | The n8n public API redacts password-type fields in responses — safe to parse `.id` without value exposure. |
 | **Dialog cancellation race** | osascript exits non-zero on cancel; adapter never runs because `set -o pipefail` aborts the pipeline. |
 
+## Verifying rotations without peeking
+
+When validating that a rotation worked, it is easy to accidentally leak the new value by "just checking the first few characters" — e.g., `jq '.value[0:6]'` or printing length. **Don't.**
+
+Safe verification of a rotation:
+
+1. **Field parity** — `op item get ... --format=json | jq '[.fields[].label] | sort'` before and after; compare for equality. No values printed.
+2. **Target field is non-empty** — `op read "op://Vault/Item/field" >/dev/null 2>&1 && echo ok || echo empty`. Uses exit code only.
+3. **End-to-end sanity** — use the value in the actual consumer (HTTP API call, CLI command) with the value substituted inline from `op read` piped to the consumer's stdin or header. If the consumer returns 200, the rotation is real.
+
+Never print `.value`, `.value[0:N]`, or `.value | length` for the rotated field.
+
 ## Defense against `bash -x` / `set -x` xtrace
 
 Bash's `xtrace` mode prints every expanded command — including variable values — to stderr. Without protection, an operator running `bash -x scripts/capture.sh ...` for debugging would leak the captured value via the `+ printf %s <VALUE>` and `+ value=<VALUE>` trace lines.

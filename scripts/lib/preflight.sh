@@ -20,10 +20,13 @@ preflight_check() {
 _pf_1password() {
   command -v op >/dev/null 2>&1 \
     || { echo "ADAPTER_ERROR: 'op' (1Password CLI) not found" >&2; return 7; }
-  op whoami >/dev/null 2>&1 \
-    || { echo "AUTH_FAIL: 1Password CLI not signed in (run: eval \$(op signin))" >&2; return 8; }
   command -v jq >/dev/null 2>&1 \
     || { echo "ADAPTER_ERROR: 'jq' not found" >&2; return 7; }
+  # No `op whoami` preflight: with the desktop biometric integration,
+  # `op whoami` can return "not signed in" even when real item commands succeed
+  # (it doesn't trigger a session refresh like `op item get`/`op vault list` do).
+  # The adapter's own `op item get/create` calls will surface auth failures as
+  # ADAPTER_ERROR if authentication genuinely fails.
 }
 
 _pf_keychain() {
