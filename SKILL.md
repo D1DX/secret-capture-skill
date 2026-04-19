@@ -72,7 +72,10 @@ bash capture.sh --target gh-secret --scope org --org <org> --name <SECRET_NAME>
 bash capture.sh --target gh-secret --scope env --repo <owner/repo> --env <env-name> --name <SECRET_NAME>
 ```
 
-Returns: `gh-secret:<scope-path>#<name>`
+Returns:
+- repo: `gh-secret:<owner>/<repo>#<name>`
+- org: `gh-secret:org/<org>#<name>`
+- env: `gh-secret:<owner>/<repo>/env/<env>#<name>`
 
 Use for GitHub Actions secrets.
 

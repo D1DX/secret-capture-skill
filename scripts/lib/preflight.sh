@@ -22,6 +22,8 @@ _pf_1password() {
     || { echo "ADAPTER_ERROR: 'op' (1Password CLI) not found" >&2; return 7; }
   op whoami >/dev/null 2>&1 \
     || { echo "AUTH_FAIL: 1Password CLI not signed in (run: eval \$(op signin))" >&2; return 8; }
+  command -v jq >/dev/null 2>&1 \
+    || { echo "ADAPTER_ERROR: 'jq' not found" >&2; return 7; }
 }
 
 _pf_keychain() {
@@ -50,6 +52,8 @@ _pf_coolify() {
     || { echo "ADAPTER_ERROR: 'curl' not found" >&2; return 7; }
   command -v jq >/dev/null 2>&1 \
     || { echo "ADAPTER_ERROR: 'jq' not found" >&2; return 7; }
+  command -v yq >/dev/null 2>&1 \
+    || { echo "ADAPTER_ERROR: 'yq' (Go version) required to read config — install: brew install yq" >&2; return 7; }
   local url
   url=$(config_get "defaults.coolify.url")
   [[ -n "$url" ]] \
@@ -61,4 +65,6 @@ _pf_n8n() {
     || { echo "ADAPTER_ERROR: 'curl' not found" >&2; return 7; }
   command -v jq >/dev/null 2>&1 \
     || { echo "ADAPTER_ERROR: 'jq' not found" >&2; return 7; }
+  command -v yq >/dev/null 2>&1 \
+    || { echo "ADAPTER_ERROR: 'yq' (Go version) required to read config — install: brew install yq" >&2; return 7; }
 }

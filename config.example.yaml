@@ -13,17 +13,14 @@
 #   command:<shell-fragment>      — arbitrary shell (evaluated at invocation)
 
 adapters:
-  # Only enabled adapters are loaded at runtime.
+  # Only enabled adapters are loaded at runtime. If `enabled` is omitted, every
+  # shipped adapter is allowed (default-open).
   enabled:
     - 1password
     - keychain
     - gh-secret
     - wrangler
     - env-file
-  # The `generic` adapter accepts an arbitrary stdin-consuming shell fragment.
-  # Powerful but easy to misuse — opt in explicitly.
-  disabled:
-    - generic
 
 defaults:
   1password:
@@ -74,8 +71,6 @@ dialog:
 hygiene:
   # When true, require --expect on every invocation.
   enforce_format_validation: false
-  # When true, interactively confirm before --rotate overwrites an existing record.
-  require_rotation_confirm: true
 
 naming:
   # When true, reject item/name values that don't match the pattern.

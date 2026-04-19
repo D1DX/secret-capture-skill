@@ -27,14 +27,16 @@ config_get() {
 }
 
 # config_adapter_enabled <target>
-# Returns 0 if enabled (or if config file doesn't exist — default-open).
+# Three-case decision:
+#   1. No config file or no yq → default-open (return 0). Skill works out of the box.
+#   2. adapters.enabled is set → only listed targets are allowed.
+#   3. adapters.enabled is unset but adapters.disabled is set → all except listed are allowed.
 config_adapter_enabled() {
   local target="$1"
   [[ ! -f "$SC_CONFIG_FILE" ]] && return 0
   _yq_available || return 0
   local enabled
   enabled=$(yq -r '.adapters.enabled[]?' "$SC_CONFIG_FILE" 2>/dev/null || true)
-  # If adapters.enabled is missing entirely, default-open.
   if [[ -z "$enabled" ]]; then
     local disabled
     disabled=$(yq -r '.adapters.disabled[]?' "$SC_CONFIG_FILE" 2>/dev/null || true)

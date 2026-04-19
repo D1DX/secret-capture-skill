@@ -36,7 +36,9 @@ dialog_capture() {
     return 3
   fi
 
-  # Strip exactly one trailing newline (if any); preserve any internal characters.
+  # Defensive newline strip: osascript's `text returned` already excludes the trailing
+  # newline, and `read -rs` doesn't add one — but if upstream changes or a future
+  # capture path appends one, this guarantees adapters receive a clean value.
   value="${value%$'\n'}"
 
   # Emit without trailing newline; adapters can handle as raw.

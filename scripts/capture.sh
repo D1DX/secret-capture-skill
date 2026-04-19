@@ -4,6 +4,17 @@
 # Parses --target and adapter flags, loads config, runs preflight, then invokes
 # the adapter in a single subshell with the dialog-captured value piped into it.
 # The only thing this script emits on stdout is the adapter's reference string.
+#
+# Exit codes (every error is also tagged on stderr with its NAMED CODE):
+#   0  — success
+#   2  — USAGE_ERROR        (bad args, unknown target, target not enabled in config)
+#   3  — NO_GUI             (no WindowServer + no TTY)
+#   4  — CANCELLED          (user dismissed dialog or Ctrl-C at TTY)
+#   5  — FORMAT_MISMATCH    (--expect regex didn't match)
+#   6  — DUPLICATE          (record exists at destination, --rotate not passed)
+#   7  — ADAPTER_ERROR      (subcommand non-zero / missing tool)
+#   8  — AUTH_FAIL          (op not signed in / gh auth expired / destination 401)
+#   9  — CONFIG_ERROR       (required config field missing in ~/.config/secret-capture/config.yaml)
 
 SKILL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export SKILL_ROOT

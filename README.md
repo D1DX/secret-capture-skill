@@ -47,7 +47,7 @@ More destinations are planned (Vercel, Netlify, Fly.io, HashiCorp Vault, AWS Sec
 
 - **macOS** (osascript dialog). Linux / Windows support is planned — see [Roadmap](#roadmap).
 - `bash` ≥ 4 (or `zsh`), `jq`, `curl`.
-- **`yq` (Go version, mikefarah/yq)** — for config + pattern file parsing. `brew install yq`. Without `yq`, the `1password`, `coolify`, `n8n` adapters cannot read their runtime config; `--expect` format validation also requires it.
+- **`yq` (Go version, mikefarah/yq)** — required for: `coolify` and `n8n` adapters (read runtime config), `1password` adapter (read user defaults), and `--expect` format validation (reads `patterns/common.yaml`). The `keychain`, `gh-secret`, `wrangler`, and `env-file` adapters work without `yq`. Install via `brew install yq`.
 - `expect` — preinstalled on macOS; required by the `keychain` adapter.
 - Per-destination tooling (install the ones you plan to use):
   - `op` — 1Password CLI (`brew install 1password-cli`)
@@ -145,7 +145,7 @@ Every adapter emits a **reference** — never the value:
 |---|---|
 | `1password` | `op://<vault>/<item>/<field>` |
 | `keychain` | `keychain:<service>` |
-| `gh-secret` | `gh-secret:<owner>/<repo>#<name>` |
+| `gh-secret` | repo: `gh-secret:<owner>/<repo>#<name>` · org: `gh-secret:org/<org>#<name>` · env: `gh-secret:<owner>/<repo>/env/<env>#<name>` |
 | `wrangler` | `wrangler-secret:<worker>#<name>` |
 | `coolify` | `coolify-env:<app-uuid>#<key>` |
 | `n8n` | `n8n-cred:<name> (id=<id>)` |
@@ -171,9 +171,9 @@ Pass `--expect <shape>` to validate the captured value against a known-key regex
 bash capture.sh --target keychain --service openai --account default --expect openai
 ```
 
-Shapes ship in [`patterns/common.yaml`](./patterns/common.yaml): `openai`, `anthropic`, `github-pat`, `aws-access-key`, `stripe`, `cloudflare-token`, `slack`. Add custom patterns at `~/.config/secret-capture/patterns.yaml`.
+Ships with 15 curated shapes in [`patterns/common.yaml`](./patterns/common.yaml) including `openai`, `anthropic`, `github-pat`, `github-fine-grained`, `github-app`, `aws-access-key`, `aws-secret-key`, `stripe-live`, `stripe-test`, `cloudflare-token`, `cloudflare-global-key`, `slack-bot`, `slack-user`, `jwt`, `uuid`. Add custom patterns at `~/.config/secret-capture/patterns.yaml`.
 
-Off by default — strict validation can reject legitimate edge cases. Turn on per invocation when you know the shape.
+Off by default — strict validation can reject legitimate edge cases. Turn on per invocation when you know the shape. **Single attempt:** if validation fails, the skill exits with `FORMAT_MISMATCH` — re-invoke to retry. Applies to every adapter (validation runs in the capture pipeline, before the adapter).
 
 ## Security model
 
