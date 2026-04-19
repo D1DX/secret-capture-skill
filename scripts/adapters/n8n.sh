@@ -17,6 +17,10 @@ INSTANCE=""
 CRED_NAME=""
 CRED_TYPE=""
 DATA_FIELD="value"
+FIELDS_JSON='{}'   # Extra non-secret fields for richer credential types.
+                   # Example: --fields-json '{"name":"X-API-Key"}' merges into .data
+                   # alongside the secret field. Good for httpHeaderAuth (needs a name +
+                   # value), httpBasicAuth (needs user + password), oAuth2Api, etc.
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -24,6 +28,7 @@ while [[ $# -gt 0 ]]; do
     --name) CRED_NAME="$2"; shift 2 ;;
     --type) CRED_TYPE="$2"; shift 2 ;;
     --data-field) DATA_FIELD="$2"; shift 2 ;;
+    --fields-json) FIELDS_JSON="$2"; shift 2 ;;
     *) echo "USAGE_ERROR: unknown arg '$1'" >&2; exit 2 ;;
   esac
 done
@@ -54,8 +59,13 @@ jq -n \
   --arg name "$CRED_NAME" \
   --arg type "$CRED_TYPE" \
   --arg field "$DATA_FIELD" \
+  --argjson extra "$FIELDS_JSON" \
   --rawfile v /dev/stdin \
-  '{ name: $name, type: $type, data: { ($field): ($v | rtrimstr("\n")) } }' > "$body"
+  '{
+    name: $name,
+    type: $type,
+    data: ($extra + { ($field): ($v | rtrimstr("\n")) })
+  }' > "$body"
 
 http_code=$(curl -sS -X POST \
   "${URL%/}/api/v1/credentials" \

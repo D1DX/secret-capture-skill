@@ -85,6 +85,22 @@ config_adapter_enabled "$TARGET" \
 
 preflight_check "$TARGET" || exit $?
 
+# A1 — rotation confirmation prompt (opt-in via config).
+# hygiene.require_rotation_confirm=true in ~/.config/secret-capture/config.yaml
+# asks "rotate <target>? (y/N)" on /dev/tty before running the destructive
+# side of a --rotate. Useful for shared items where a mistaken rotation
+# would require recovery (e.g. 1P archive restore + token reissue at source).
+if [[ -n "$ROTATE" ]]; then
+  if [[ "$(config_get hygiene.require_rotation_confirm false)" == "true" ]] && [[ -e /dev/tty ]]; then
+    printf 'Rotate %s? This overwrites the existing record. (y/N): ' "$TARGET" > /dev/tty
+    read -r reply < /dev/tty || reply=""
+    if [[ ! "$reply" =~ ^[Yy]$ ]]; then
+      echo "CANCELLED: rotation confirmation declined" >&2
+      exit 4
+    fi
+  fi
+fi
+
 [[ -z "$PROMPT_LABEL" ]] && PROMPT_LABEL="$TARGET"
 
 # Two-stage capture:
@@ -107,9 +123,18 @@ trap cleanup_value EXIT
 dialog_capture "$PROMPT_LABEL" > "$valfile" || exit $?
 
 if [[ -n "$EXPECT" ]]; then
+  # A2 — one retry on FORMAT_MISMATCH. Rationale: a single stray character
+  # (trailing space, accidental prefix) is the common cause; forcing the
+  # user to re-invoke the whole skill for a typo-grade mistake is friction.
+  # Two attempts total — first failure reopens the dialog, second failure
+  # exits FORMAT_MISMATCH.
   valfile_validated=$(mktemp -t sc-value-v-XXXXXX)
   trap 'shred -u "$valfile" "$valfile_validated" 2>/dev/null || rm -f "$valfile" "$valfile_validated"' EXIT
-  validate_and_forward "$EXPECT" < "$valfile" > "$valfile_validated" || exit $?
+  if ! validate_and_forward "$EXPECT" < "$valfile" > "$valfile_validated" 2>/dev/null; then
+    echo "FORMAT_MISMATCH: value does not match '$EXPECT' — reopening dialog once" >&2
+    dialog_capture "$PROMPT_LABEL" > "$valfile" || exit $?
+    validate_and_forward "$EXPECT" < "$valfile" > "$valfile_validated" || exit $?
+  fi
   mv "$valfile_validated" "$valfile"
 fi
 
