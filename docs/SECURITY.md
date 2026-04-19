@@ -50,6 +50,26 @@ Bash's `xtrace` mode prints every expanded command — including variable values
 
 `scripts/lib/dialog.sh:dialog_capture` defends against this by saving the caller's xtrace state, calling `set +x` on entry, and restoring the original state on exit. If you write a custom adapter that holds the value in a shell variable, **do the same** — wrap the value-touching block in `set +x` / `set -$_x_was`.
 
+## Known issues (tracked, not yet fixed)
+
+### CANCELLED dialog still runs adapter with empty stdin
+
+`scripts/capture.sh` invokes the adapter via a pipeline: `dialog_capture | adapter`. When the user cancels the dialog, `dialog_capture` exits 4 (`CANCELLED`) with no stdout, but the adapter stage has already started reading — it sees EOF immediately, proceeds with an empty value, and can successfully write an empty secret to the destination before `pipefail` aborts.
+
+**Observed with** `wrangler` adapter — an empty `SC_SMOKE_TEST` secret was created on a test Worker.
+
+**Mitigation until fixed**: callers should verify the adapter exit code AND check the destination state after any CANCELLED invocation.
+
+**Fix direction**: `capture.sh` should run `dialog_capture` first into a tempfile (0600, shredded), check its exit code, abort if non-zero, then stream the tempfile to the adapter. Loses the single-subshell elegance but closes the gap.
+
+### macOS Automation permission required for System Events
+
+`scripts/lib/dialog.sh` uses `tell application "System Events" to display dialog`. On macOS 14+, the calling process (e.g. the shell Claude Code spawns inside VS Code) needs **System Settings → Privacy & Security → Automation → System Events: ON** for the parent app. Without it, osascript returns `AppleEvent timed out. (-1712)` and the dialog never appears to the user — which looks identical to the CANCELLED path from the adapter's perspective.
+
+**Workaround A (user-side, one-time)**: grant Automation permission to the parent app.
+
+**Workaround B (skill-side, preferred for public release)**: drop the `tell application "System Events"` wrapper and use `display dialog` directly. osascript itself shows the dialog — no Automation permission required. One-line change in `dialog.sh`. TODO tracked for the v1.1 release.
+
 ## Residual risks
 
 1. **In-process memory**: the value lives briefly in the memory of `osascript`, `expect`, `jq`, `curl`, and the dialog `TextField`. Same-UID processes with access to `/proc/<pid>/mem` can read them during execution. The skill does not use `mlock`.
