@@ -14,6 +14,12 @@ _has_tty() {
 # Emits the captured value (no trailing newline) to stdout.
 # On cancel: exit 4 (CANCELLED). On no-GUI and no-TTY: exit 3 (NO_GUI).
 dialog_capture() {
+  # Defensive: silence xtrace inside this function so values never appear in
+  # `bash -x` / `set -x` traces. Saved/restored around the function body.
+  local _xtrace_was_on=""
+  case $- in *x*) _xtrace_was_on=1 ;; esac
+  set +x
+
   local prompt="${1:-secret}"
   local value=""
 
@@ -42,6 +48,17 @@ dialog_capture() {
   value="${value%$'\n'}"
 
   # Emit without trailing newline; adapters can handle as raw.
-  printf '%s' "$value"
+  #
+  # Pipeline-SIGPIPE defense: some adapters (e.g. keychain via `expect`) close
+  # their stdin immediately after `read stdin` returns. Bash's pipefail then
+  # propagates the writer's SIGPIPE (exit 141) as a phantom pipeline failure
+  # even though the value was already delivered and the adapter succeeded.
+  # The subshell with `set +e`, `trap '' PIPE`, and explicit `exit 0` guarantees
+  # this stage returns 0 regardless of EPIPE.
+  ( set +e; trap '' PIPE; printf '%s' "$value"; exit 0 )
   value=""
+
+  # Restore xtrace if the caller had it on.
+  [[ -n "$_xtrace_was_on" ]] && set -x || true
+  return 0
 }

@@ -32,6 +32,12 @@ The skill does **not** defend against:
 | **n8n response echo** | The n8n public API redacts password-type fields in responses — safe to parse `.id` without value exposure. |
 | **Dialog cancellation race** | osascript exits non-zero on cancel; adapter never runs because `set -o pipefail` aborts the pipeline. |
 
+## Defense against `bash -x` / `set -x` xtrace
+
+Bash's `xtrace` mode prints every expanded command — including variable values — to stderr. Without protection, an operator running `bash -x scripts/capture.sh ...` for debugging would leak the captured value via the `+ printf %s <VALUE>` and `+ value=<VALUE>` trace lines.
+
+`scripts/lib/dialog.sh:dialog_capture` defends against this by saving the caller's xtrace state, calling `set +x` on entry, and restoring the original state on exit. If you write a custom adapter that holds the value in a shell variable, **do the same** — wrap the value-touching block in `set +x` / `set -$_x_was`.
+
 ## Residual risks
 
 1. **In-process memory**: the value lives briefly in the memory of `osascript`, `expect`, `jq`, `curl`, and the dialog `TextField`. Same-UID processes with access to `/proc/<pid>/mem` can read them during execution. The skill does not use `mlock`.
