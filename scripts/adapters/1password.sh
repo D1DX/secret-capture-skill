@@ -4,15 +4,19 @@
 # Stdout: op://<vault>/<item>/<field>
 #
 # Why delete+recreate on rotation: `op item edit` only accepts value assignments on argv,
-# which would leak the value through `ps`. `op item create` accepts a JSON template on stdin,
-# built by jq with `--rawfile v /dev/stdin`, so the value never touches argv or a shell var.
+# which would leak the value through `ps`. `op item create --template <path>` reads the JSON
+# from a 0600 tempfile built by jq with `--rawfile v /dev/stdin`, so the value never touches
+# argv or a shell variable.
+#
+# Why CATEGORY default is "API_CREDENTIAL" (not "API Credential"): op CLI requires the
+# uppercase-underscore template ID. Get the canonical list via `op item template list`.
 
 set -euo pipefail
 
 VAULT=""
 ITEM=""
 FIELD="credential"
-CATEGORY="API Credential"
+CATEGORY="API_CREDENTIAL"
 TITLE=""
 
 while [[ $# -gt 0 ]]; do
@@ -59,7 +63,7 @@ jq -n \
      ]
    }' > "$payload"
 
-op item create --vault "$VAULT" - < "$payload" >/dev/null 2>&1 \
+op item create --vault "$VAULT" --template "$payload" </dev/null >/dev/null 2>&1 \
   || { echo "ADAPTER_ERROR: op item create failed" >&2; exit 7; }
 
 printf 'op://%s/%s/%s\n' "$VAULT" "$ITEM" "$FIELD"
