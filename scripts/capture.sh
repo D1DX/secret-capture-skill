@@ -37,7 +37,7 @@ secret-capture — capture a secret via hidden-input dialog and route it to a de
 Usage:
   capture.sh --target <target> [target-flags] [--rotate] [--expect <shape>] [--prompt <label>]
 
-Targets: 1password | keychain | gh-secret | wrangler | coolify | n8n | env-file
+Targets: 1password | keychain | gh-secret | wrangler | coolify | n8n | env-file | ssh
 
 See SKILL.md for target-specific flags, or the README for examples.
 USAGE

@@ -13,8 +13,14 @@ preflight_check() {
     coolify) _pf_coolify ;;
     n8n) _pf_n8n ;;
     env-file) : ;;
+    ssh) _pf_ssh ;;
     *) echo "USAGE_ERROR: no preflight for target '$target'" >&2; return 2 ;;
   esac
+}
+
+_pf_ssh() {
+  command -v ssh >/dev/null 2>&1 \
+    || { echo "ADAPTER_ERROR: 'ssh' not found" >&2; return 7; }
 }
 
 _pf_1password() {

@@ -119,6 +119,34 @@ Returns: `env-file:<path>#<key>`
 
 Writes to a local `.env` file with mode 0600. Creates the file if missing.
 
+### `ssh`
+
+```bash
+# KEY=VALUE into a remote dotenv / env file:
+bash capture.sh --target ssh \
+  --ssh-host <host> [--ssh-user <user>] \
+  --mode file-kv --remote-path <remote-path> --key <KEY_NAME> [--chmod 600]
+
+# Raw value into a remote file (PEM, cert, single-token):
+bash capture.sh --target ssh \
+  --ssh-host <host> [--ssh-user <user>] \
+  --mode file-raw --remote-path <remote-path> [--chmod 600]
+```
+
+Returns:
+- `file-kv` → `ssh-kv:<user>@<host>:<path>#<key>`
+- `file-raw` → `ssh-file:<user>@<host>:<path>`
+
+Use when you need to inject a secret into a remote server without reading it yourself. Common cases: dotenv on a VPS, docker-compose `.env`, systemd `EnvironmentFile=`, TLS key/cert drops, single-token files read by a daemon.
+
+**Authentication:** uses your ssh-agent (1Password SSH Agent, system agent, or similar). No private key file is read. First-connect uses `StrictHostKeyChecking=accept-new`.
+
+**Atomicity:** value is piped over ssh stdin, written to `<remote-path>.sc-new` with `umask 077`, chmod'd, then `mv`'d into place. No partial-write window.
+
+**Security:** value never touches argv, env, or any shell variable. End-to-end pipe: local stdin → local temp (0600, shredded) → ssh stdin → remote `cat > .sc-new` → remote `mv`. Single quotes in the value (`file-kv` mode) are escaped via sed on the local side.
+
+**Idempotency:** checks the remote file before writing. `file-kv` checks for the `KEY=` prefix; `file-raw` checks for file existence. Duplicate → `DUPLICATE` (exit 6) unless `--rotate` is passed.
+
 ## Rotation
 
 Add `--rotate` to any invocation. The adapter switches from create → edit/update/overwrite. If the record doesn't exist, it fails with `NOT_FOUND`.

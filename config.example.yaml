@@ -21,6 +21,7 @@ adapters:
     - gh-secret
     - wrangler
     - env-file
+    - ssh
 
 defaults:
   1password:
