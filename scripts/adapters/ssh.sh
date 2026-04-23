@@ -120,13 +120,16 @@ case "$MODE" in
     # `RS="\x00"` makes awk consume the whole stream as one record.
     awk 'BEGIN { RS="\x00" } { sub(/\n+$/, ""); printf "%s", $0 }' > "$trimmed"
 
-    # Build the final file: stripped content + new KEY='value' line.
-    # Single-quote the value; escape any embedded single quotes via sed.
+    # Build the final file: stripped content + new KEY=value line (unquoted).
+    # Docker env_file, Python dotenv, and most env parsers read values literally —
+    # shell-quoting (KEY='value') makes the quotes part of the value. Write bare.
+    # Values containing spaces or special chars are the caller's responsibility;
+    # for shell-sourced files, strip and re-add quotes in the consuming script.
     {
       cat "$stripped"
-      printf "%s='" "$KEY"
-      sed "s/'/'\\\\''/g" < "$trimmed"
-      printf "'\n"
+      printf "%s=" "$KEY"
+      cat "$trimmed"
+      printf "\n"
     } > "$combined"
 
     # Atomic remote write: upload to temp, chmod, mv into place.

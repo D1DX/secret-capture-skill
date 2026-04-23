@@ -143,7 +143,9 @@ Use when you need to inject a secret into a remote server without reading it you
 
 **Atomicity:** value is piped over ssh stdin, written to `<remote-path>.sc-new` with `umask 077`, chmod'd, then `mv`'d into place. No partial-write window.
 
-**Security:** value never touches argv, env, or any shell variable. End-to-end pipe: local stdin → local temp (0600, shredded) → ssh stdin → remote `cat > .sc-new` → remote `mv`. Single quotes in the value (`file-kv` mode) are escaped via sed on the local side.
+**Security:** value never touches argv, env, or any shell variable. End-to-end pipe: local stdin → local temp (0600, shredded) → ssh stdin → remote `cat > .sc-new` → remote `mv`.
+
+**`file-kv` writes unquoted values (`KEY=value`, not `KEY='value'`).** Docker `env_file`, Python `dotenv`, and most env parsers read values literally — shell quotes become part of the value, breaking consumers that expect a 32-char key but receive a 34-char `'key'`. If the target file is sourced as a shell script and the value contains spaces or special characters, add quoting inside the value itself before calling the adapter.
 
 **Idempotency:** checks the remote file before writing. `file-kv` checks for the `KEY=` prefix; `file-raw` checks for file existence. Duplicate → `DUPLICATE` (exit 6) unless `--rotate` is passed.
 
