@@ -1,229 +1,76 @@
 # secret-capture
 
-[![Author](https://img.shields.io/badge/Author-Daniel_Rudaev-000000?style=flat)](https://github.com/daniel-rudaev)
-[![Studio](https://img.shields.io/badge/Studio-D1DX-000000?style=flat)](https://d1dx.com)
-[![Claude Code](https://img.shields.io/badge/Claude_Code-Skill-CC785C?style=flat)](https://github.com/anthropics/claude-code)
-[![License](https://img.shields.io/badge/License-MIT-green?style=flat)](./LICENSE)
+A Claude Code skill (and standalone CLI) that captures a secret from you via a hidden-input dialog and routes it to exactly one destination, **without the value ever appearing in any tool result, log, or chat transcript**.
 
-A Claude Code skill (and standalone CLI) that captures a secret from you via a hidden-input dialog and writes it directly to a destination — **without the value ever appearing in any tool result, log, or chat transcript**.
-
----
-
-## The problem
-
-When an AI agent needs an API key or token, the obvious path leaks: paste the key into chat → it's in the conversation transcript. Type it in the terminal → it's in shell history. Pass it as a flag → it shows up in `ps`.
-
-`secret-capture` breaks that pattern. Instead of asking you to paste a value, the agent invokes this skill. You type the secret into a native hidden-input dialog (like a password prompt). The value flows directly from the dialog to the destination in a single subshell — the agent only ever sees the reference back.
-
----
+The problem this solves: agents routinely need to configure services with API keys and tokens. If you paste a secret into the chat or the terminal, it ends up in history, logs, and — with AI agents — the conversation transcript. `secret-capture` lets the agent prompt you for a secret via a native hidden-input dialog, pipe the value directly to the destination in a single subshell, and only return a reference string the agent can use later. The agent never sees the value.
 
 ## How it works
 
 ```
-  Agent invokes:
-  bash capture.sh --target <destination> [destination flags]
-         │
-         ▼
-  ┌─ hidden-input dialog (osascript) ─────────────────┐
-  │  ● ● ● ● ● ● ● ● ●   ← you type here, not in chat │
-  └────────────────────────────────────────────────────┘
-         │  value never leaves this pipe
-         ▼
-  adapter writes to destination  →  output suppressed
-         │
-         ▼
-  stdout: a reference string (e.g. op://Personal/my-key/credential)
-         │
-         ▼
-  Agent receives: the reference. Never the value.
+   Agent: "I need to store an OpenAI key in 1Password"
+          │
+          ▼
+   bash capture.sh --target 1password --vault Personal --item openai-new --field credential
+          │
+          ▼
+   osascript hidden-input dialog  ←  you type the secret here
+          │
+          ▼
+   ┌──────────── single subshell, value never leaves the pipe ────────────┐
+   │                                                                       │
+   │   dialog_capture │ adapters/1password.sh → op item create --- >/dev/null │
+   │                                                                       │
+   └───────────────────────────────────────────────────────────────────────┘
+          │
+          ▼
+   Stdout: "op://Personal/openai-new/credential"
+          │
+          ▼
+   Agent receives: a reference. Never the value.
 ```
 
-The reference is a pointer the agent can use later to retrieve or consume the secret — without ever seeing the secret itself.
+## Destinations supported (v1)
 
----
-
-## Pick your destination
-
-Eight adapters ship with v1. Choose based on **who or what will consume the secret**:
-
-| I need the secret to live in… | Use adapter | Best for |
+| Target | What it writes to | Requires |
 |---|---|---|
-| **1Password** | `1password` | Anything you'll consume from your own machine — CLI tools, agents, MCPs, scripts. `op read` retrieves it anywhere. |
-| **macOS Keychain** | `keychain` | Local CLI tools or scripts that use `security find-generic-password`. |
-| **GitHub Actions** | `gh-secret` | CI/CD secrets for a repo, org, or environment. |
-| **Cloudflare Workers** | `wrangler` | Worker secrets injected at runtime via the Cloudflare platform. |
-| **Coolify** | `coolify` | Environment variables for an app managed by your Coolify instance. |
-| **n8n** | `n8n` | Credentials for a workflow running on your n8n instance. |
-| **A `.env` file** | `env-file` | Local development or any tool that reads a `.env` file. |
-| **A remote server** | `ssh` | Secrets on a VPS — dotenv files, TLS keys, single-token files read by a daemon. |
+| `1password` | A 1Password item (create or edit) | `op` CLI signed in |
+| `keychain` | macOS login keychain | Built into macOS |
+| `gh-secret` | GitHub Actions secret (repo / org / env) | `gh` CLI authed |
+| `wrangler` | Cloudflare Workers secret | `wrangler` + Cloudflare auth |
+| `coolify` | Coolify application env var (via REST) | Coolify instance URL + API token |
+| `n8n` | n8n credential (via REST) | n8n instance URL + API key |
+| `env-file` | Local `.env` file (mode 0600) | — |
 
-**Rule of thumb:** if _you_ consume it from your machine → `1password`. If a _platform_ consumes it at runtime → the matching platform adapter.
+More destinations are planned (Vercel, Netlify, Fly.io, HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager, Kubernetes, Docker) — PRs welcome.
 
----
+## Requirements
 
-## Adapters
+- **macOS** (osascript dialog). Linux / Windows support is planned — see [Roadmap](#roadmap). No Automation permission required — dialog runs inside osascript itself, not via System Events.
+- `bash` ≥ 4 (or `zsh`), `jq`, `curl`.
+- **`yq` (Go version, mikefarah/yq)** — required for: `coolify` and `n8n` adapters (read runtime config), `1password` adapter (read user defaults), and `--expect` format validation (reads `patterns/common.yaml`). The `keychain`, `gh-secret`, `wrangler`, and `env-file` adapters work without `yq`. Install via `brew install yq`.
+- `expect` — preinstalled on macOS; required by the `keychain` adapter.
+- Per-destination tooling (install the ones you plan to use):
+  - `op` — 1Password CLI (`brew install 1password-cli`)
+  - `gh` — GitHub CLI (`brew install gh`)
+  - `wrangler` — Cloudflare Workers CLI (`npm i -g wrangler`)
 
-### `1password`
-
-Writes to a 1Password item (create or rotate). Returns a reference you pass to `op read` later.
-
-```bash
-bash capture.sh --target 1password \
-  --vault <vault-name> \
-  --item  <item-name>  \
-  --field <field-name> \
-  [--category API_CREDENTIAL] \
-  [--rotate]
-# → op://Personal/my-key/credential
-```
-
-Requires: `op` CLI signed in (`brew install 1password-cli`).
-
----
-
-### `keychain`
-
-Writes to the macOS login keychain. Use `security find-generic-password -s <service> -w` to read it later.
+One-liner for the full set on macOS:
 
 ```bash
-bash capture.sh --target keychain \
-  --service <service-name> \
-  --account <account>      \
-  [--rotate]
-# → keychain:my-service
+brew install jq yq 1password-cli gh && npm i -g wrangler
 ```
-
-Requires: built into macOS (uses `security` + `expect`).
-
----
-
-### `gh-secret`
-
-Sets a GitHub Actions secret at repo, org, or environment scope.
-
-```bash
-# Repo secret
-bash capture.sh --target gh-secret --scope repo \
-  --repo <owner/repo> --name <SECRET_NAME>
-# → gh-secret:owner/repo#SECRET_NAME
-
-# Org secret
-bash capture.sh --target gh-secret --scope org \
-  --org <org> --name <SECRET_NAME>
-# → gh-secret:org/myorg#SECRET_NAME
-
-# Environment secret
-bash capture.sh --target gh-secret --scope env \
-  --repo <owner/repo> --env <env-name> --name <SECRET_NAME>
-# → gh-secret:owner/repo/env/production#SECRET_NAME
-```
-
-Requires: `gh` CLI authenticated (`brew install gh && gh auth login`).
-
----
-
-### `wrangler`
-
-Sets a Cloudflare Workers secret. The Worker reads it as an environment binding at runtime.
-
-```bash
-bash capture.sh --target wrangler \
-  --worker <worker-name> \
-  --name   <SECRET_NAME> \
-  [--rotate]
-# → wrangler-secret:my-worker#SECRET_NAME
-```
-
-Requires: `wrangler` CLI with Cloudflare auth (`npm i -g wrangler && wrangler login`).
-
----
-
-### `coolify`
-
-Writes an environment variable to a Coolify application via the Coolify REST API. Bypasses the MCP intentionally — the MCP response would echo the value back into the transcript.
-
-```bash
-bash capture.sh --target coolify \
-  --app-uuid <uuid> \
-  --key       <ENV_VAR_NAME> \
-  [--build-time] \
-  [--rotate]
-# → coolify-env:abc123#MY_VAR
-```
-
-Requires: Coolify instance URL + API token configured in `~/.config/secret-capture/config.yaml` (see [Configure](#configure)).
-
----
-
-### `n8n`
-
-Creates a credential in your n8n instance. The credential type name must match n8n's internal type (e.g. `anthropicApi`, `openAiApi`, `httpHeaderAuth`).
-
-```bash
-bash capture.sh --target n8n \
-  --instance   <instance-alias> \
-  --name       <credential-name> \
-  --type       <n8n-credential-type> \
-  [--data-field <field-name>]
-# → n8n-cred:My Anthropic Key (id=42)
-```
-
-Requires: n8n instance URL + API key configured in `~/.config/secret-capture/config.yaml` (see [Configure](#configure)).
-
----
-
-### `env-file`
-
-Appends or updates a `KEY=value` line in a local `.env` file (creates it at mode 0600 if it doesn't exist).
-
-```bash
-bash capture.sh --target env-file \
-  --file <path/to/.env> \
-  --key  <KEY_NAME>     \
-  [--rotate]
-# → env-file:.env#MY_KEY
-```
-
-Requires: nothing beyond bash.
-
----
-
-### `ssh`
-
-Writes a secret to a file on a remote server over SSH, without the value touching argv or env at any point.
-
-```bash
-# KEY=value line in a remote dotenv file
-bash capture.sh --target ssh \
-  --ssh-host    <host>        \
-  --mode        file-kv       \
-  --remote-path <remote-path> \
-  --key         <KEY_NAME>    \
-  [--chmod 600] [--rotate]
-# → ssh-kv:user@host:/path/to/file#KEY_NAME
-
-# Raw value into a remote file (PEM, cert, token)
-bash capture.sh --target ssh \
-  --ssh-host    <host>        \
-  --mode        file-raw      \
-  --remote-path <remote-path> \
-  [--chmod 600] [--rotate]
-# → ssh-file:user@host:/path/to/file
-```
-
-Requires: SSH agent (1Password SSH Agent or system agent). Uses `StrictHostKeyChecking=accept-new` on first connect. Writes atomically via a temp file + `mv`.
-
----
 
 ## Install
 
 ### As a Claude Code skill
 
+Clone (or add as a submodule) into your skills directory:
+
 ```bash
 git clone https://github.com/D1DX/secret-capture-skill.git ~/.claude/skills/secret-capture
 ```
 
-Claude Code auto-discovers skills in `~/.claude/skills/` at session start. The skill auto-triggers when the agent detects a credential task and is also manually invocable as `/secret-capture`.
+Claude Code auto-discovers skills in `~/.claude/skills/` at session start. The skill will auto-trigger when the agent detects a credential-configuration task, and is also manually invocable as `/secret-capture`.
 
 ### As a standalone CLI
 
@@ -232,27 +79,9 @@ git clone https://github.com/D1DX/secret-capture-skill.git ~/.local/share/secret
 echo 'alias secret-capture="bash $HOME/.local/share/secret-capture/scripts/capture.sh"' >> ~/.zshrc
 ```
 
----
-
-## Requirements
-
-- **macOS** — dialog uses `osascript`. No Automation permission required. Linux/Windows support planned.
-- `bash` ≥ 4 (or `zsh`), `jq`, `curl`
-- `yq` (Go version, mikefarah/yq) — needed by `1password`, `coolify`, `n8n` adapters and `--expect` validation
-- `expect` — preinstalled on macOS; needed by `keychain` adapter
-- Per-adapter tooling — only install what you need:
-
-```bash
-brew install jq yq 1password-cli gh && npm i -g wrangler
-```
-
----
-
 ## Configure
 
-Create `~/.config/secret-capture/config.yaml` (mode 0600). See [`config.example.yaml`](./config.example.yaml) for the full shape.
-
-**Minimum config:**
+Create `~/.config/secret-capture/config.yaml`. See [`config.example.yaml`](./config.example.yaml) for the full shape. Minimum:
 
 ```yaml
 adapters:
@@ -263,98 +92,126 @@ defaults:
     vault: "Personal"
 ```
 
-**For Coolify and n8n** — these adapters need to authenticate to your instance. Configure where the skill should source their API credentials (the credentials the _skill_ uses, not the secret being captured):
+For destinations that need their own API credentials (Coolify, n8n), each destination declares where to source them. Options: `keychain:<service>`, `env:<VAR>`, `file:<path>`, `op:<op-ref>`, `command:<shell>`. Example:
 
 ```yaml
 defaults:
   coolify:
     url: "https://coolify.example.com"
-    api_key_source: "keychain:coolify-api"   # or op:// or env:MY_VAR
-
+    api_key_source: "keychain:coolify-api"
   n8n:
     instances:
       production:
         url: "https://n8n.example.com"
-        api_key_source: "keychain:n8n-production-api"
+        api_key_source: "op:op://Personal/n8n-api/credential"
 ```
 
-`api_key_source` supports: `keychain:<service>`, `op:<op-ref>`, `env:<VAR>`, `file:<path>`, `command:<shell>`.
+## Usage
 
----
+### From an agent
 
-## Options
-
-### `--rotate` — overwrite an existing secret
-
-By default every adapter fails with `DUPLICATE` if the item already exists. Pass `--rotate` to switch to an update/overwrite flow:
+The agent invokes the entry script. It passes the destination kind and the destination-specific spec as flags; it never passes the value.
 
 ```bash
-bash capture.sh --target 1password --rotate --vault Personal --item my-key --field credential
+bash ~/.claude/skills/secret-capture/scripts/capture.sh \
+  --target 1password \
+  --vault Personal \
+  --item anthropic-key \
+  --field credential
+# → op://Personal/anthropic-key/credential
 ```
 
-Works on all adapters.
+```bash
+bash ~/.claude/skills/secret-capture/scripts/capture.sh \
+  --target wrangler \
+  --worker my-api \
+  --name OPENAI_API_KEY
+# → wrangler-secret:my-api#OPENAI_API_KEY
+```
 
-### `--expect <shape>` — validate format before writing
+### From the user (manual invocation)
 
-Validates the captured value against a known regex before the adapter runs. Useful to catch paste mistakes.
+Same flags. For Claude Code:
+
+```
+/secret-capture --target keychain --service my-cli-tool --account $(whoami)
+```
+
+### Return values
+
+Every adapter emits a **reference** — never the value:
+
+| Target | Reference format |
+|---|---|
+| `1password` | `op://<vault>/<item>/<field>` |
+| `keychain` | `keychain:<service>` |
+| `gh-secret` | repo: `gh-secret:<owner>/<repo>#<name>` · org: `gh-secret:org/<org>#<name>` · env: `gh-secret:<owner>/<repo>/env/<env>#<name>` |
+| `wrangler` | `wrangler-secret:<worker>#<name>` |
+| `coolify` | `coolify-env:<app-uuid>#<key>` |
+| `n8n` | `n8n-cred:<name> (id=<id>)` |
+| `env-file` | `env-file:<path>#<key>` |
+
+The agent uses the reference to consume the secret later (e.g., `op read "op://Personal/anthropic-key/credential"`), without the skill ever holding the value in memory again.
+
+## Rotation
+
+Pass `--rotate`:
+
+```bash
+bash capture.sh --target 1password --rotate --vault Personal --item anthropic-key --field credential
+```
+
+The adapter detects whether an existing record exists and dispatches to edit/update/overwrite. One spec, one home.
+
+## Format validation (opt-in)
+
+Pass `--expect <shape>` to validate the captured value against a known-key regex before writing it:
 
 ```bash
 bash capture.sh --target keychain --service openai --account default --expect openai
 ```
 
-16 built-in shapes in [`patterns/common.yaml`](./patterns/common.yaml): `openai`, `anthropic`, `github-pat`, `github-fine-grained`, `github-app`, `aws-access-key`, `aws-secret-key`, `stripe-live`, `stripe-test`, `cloudflare-token`, `cloudflare-global-key`, `slack-bot`, `slack-user`, `slack-workflow`, `jwt`, `uuid`.
+Ships with 15 curated shapes in [`patterns/common.yaml`](./patterns/common.yaml) including `openai`, `anthropic`, `github-pat`, `github-fine-grained`, `github-app`, `aws-access-key`, `aws-secret-key`, `stripe-live`, `stripe-test`, `cloudflare-token`, `cloudflare-global-key`, `slack-bot`, `slack-user`, `jwt`, `uuid`. Add custom patterns at `~/.config/secret-capture/patterns.yaml`.
 
-Add custom patterns at `~/.config/secret-capture/patterns.yaml`. See [`docs/PATTERNS.md`](./docs/PATTERNS.md).
-
-Off by default. On mismatch: exits with `FORMAT_MISMATCH` — re-invoke to retry.
-
----
+Off by default — strict validation can reject legitimate edge cases. Turn on per invocation when you know the shape. **Single attempt:** if validation fails, the skill exits with `FORMAT_MISMATCH` — re-invoke to retry. Applies to every adapter (validation runs in the capture pipeline, before the adapter).
 
 ## Security model
 
-Every adapter enforces the same invariants:
+The skill enforces these invariants for every adapter:
 
-- **Value never on argv** — adapters read from stdin, never from a flag
-- **Value never in env** — no `export` of the captured value
-- **Value never in shell history** — `HISTFILE=/dev/null` + `set +o history`
-- **Value never in stdout** — every subcommand that touches the value redirects to `/dev/null`; the only stdout is the reference string
+- **Value never on argv** — adapters read stdin via `--rawfile /dev/stdin` or `cat -`; reject any `--value`-style flag
+- **Value never in env** — nothing gets `export`ed
+- **Value never in shell history** — `set +o history` + `HISTFILE=/dev/null`
+- **Value never in stdout** — every subcommand that touches it is redirected to `/dev/null`
 - **Tempfiles are 0600 + shredded** — `umask 077` + `mktemp` + `trap shred EXIT`
+- **Tool results** — the capture script's only stdout is the reference string
 
-See [`docs/SECURITY.md`](./docs/SECURITY.md) for the full threat model, leak vectors, and how to verify no leaks locally.
-
-For framework-level enforcement (blocking unsafe `op read` patterns, scanning written files for hardcoded secrets), see [`docs/HOOKS.md`](./docs/HOOKS.md).
-
----
+See [`docs/SECURITY.md`](./docs/SECURITY.md) for the full threat model.
 
 ## Error codes
 
-All errors emit a machine-readable code on stderr. The value is never in an error message.
+All errors emit machine-readable codes on stderr. The value is never in an error message.
 
 | Code | When |
 |---|---|
 | `CANCELLED` | User hit Cancel in dialog or Ctrl-C at TTY |
 | `NO_GUI` | No WindowServer and no TTY available |
 | `TIMEOUT` | osascript 2-minute auto-dismiss |
-| `AUTH_FAIL` | Destination rejected credentials (op not signed in, gh not authed, API 401) |
-| `DUPLICATE` | Item already exists — re-invoke with `--rotate` |
-| `NOT_FOUND` | `--rotate` passed but item does not exist |
-| `FORMAT_MISMATCH` | `--expect` regex did not match |
-| `ADAPTER_ERROR` | Adapter subcommand exited non-zero |
-
----
+| `AUTH_FAIL` | `op` not signed in / `gh auth` expired / destination 401 |
+| `DUPLICATE` | Create without `--rotate`, record exists |
+| `FORMAT_MISMATCH` | `--expect` mismatch |
+| `ADAPTER_ERROR` | Subcommand non-zero exit |
 
 ## Roadmap
 
 - Linux: `zenity` / `kdialog` dialog fallback
 - Windows: PowerShell `Read-Host -AsSecureString`
-- More adapters: Vercel, Netlify, Fly.io, AWS Secrets Manager, AWS SSM Parameter Store, GCP Secret Manager, HashiCorp Vault, Kubernetes, Docker secrets
-- `generic` adapter for arbitrary stdin-consuming commands (opt-in via config)
-
----
+- More adapters: Vercel, Netlify, Fly.io, Heroku, Railway, Render, Supabase, AWS Secrets Manager, AWS SSM Parameter Store, GCP Secret Manager, HashiCorp Vault, Kubernetes, Docker secrets
+- `generic` escape-hatch adapter for arbitrary stdin-consuming commands (opt-in via config)
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](./CONTRIBUTING.md). Each new adapter must pass the hygiene lint (`scripts/lint-adapters.sh`) and meet the full contract in [`docs/ADAPTERS.md`](./docs/ADAPTERS.md).
+PRs welcome. Each new adapter must pass the hygiene lint (`scripts/lint-adapters.sh`) proving no argv/env/history/stdout leak paths.
 
 ## License
 
