@@ -44,12 +44,14 @@ You pass only the destination metadata. You never pass, read, or handle the valu
 ```bash
 bash capture.sh --target 1password \
   --vault <vault-name> --item <item-name> --field <field-name> \
-  [--category "API Credential"] [--rotate]
+  [--category API_CREDENTIAL] [--rotate]
 ```
 
 Returns: `op://<vault>/<item>/<field>`
 
 Use when the user will consume this secret from their machine (`op read ...`).
+
+`--category` must be an op CLI **template ID** (uppercase-underscore form), not the friendly UI name. Common values: `API_CREDENTIAL` (default), `LOGIN`, `PASSWORD`, `DATABASE`, `SECURE_NOTE`, `SERVER`. Get the canonical list via `op item template list`. Passing the friendly form (e.g. `"API Credential"`) makes `op item create` reject the template — the adapter surfaces op's actual error in that case.
 
 ### `keychain`
 
