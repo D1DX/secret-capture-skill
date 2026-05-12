@@ -19,6 +19,15 @@
 
 set -euo pipefail
 
+# Normalize a --category value to the UPPERCASE_UNDERSCORE template id form that
+# op item create --category requires. Accepts "API Credential", "api-credential",
+# "API_CREDENTIAL", "Login", etc. and produces "API_CREDENTIAL", "LOGIN", etc.
+normalize_category() {
+  local raw="$1"
+  # Trim leading/trailing whitespace, uppercase, replace spaces+hyphens with underscore
+  printf '%s' "$raw" | tr '[:lower:]' '[:upper:]' | tr ' -' '_' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
 VAULT=""
 ITEM=""
 FIELD="credential"
@@ -30,7 +39,7 @@ while [[ $# -gt 0 ]]; do
     --vault) VAULT="$2"; shift 2 ;;
     --item) ITEM="$2"; shift 2 ;;
     --field) FIELD="$2"; shift 2 ;;
-    --category) CATEGORY="$2"; shift 2 ;;
+    --category) CATEGORY="$(normalize_category "$2")"; shift 2 ;;
     --title) TITLE="$2"; shift 2 ;;
     *) echo "USAGE_ERROR: unknown arg '$1'" >&2; exit 2 ;;
   esac
@@ -55,21 +64,8 @@ if op item get "$ITEM" --vault "$VAULT" --format=json >/dev/null 2>&1; then
   fi
 
   # Rotate path: read full item (with values) and swap only the target field's value.
-  # `op item get --reveal` writes JSON (values included) to stdout on success — keep that
-  # routed to "$fullitem". On failure it writes a diagnostic to stderr; capture that
-  # separately so the caller learns the real reason instead of a generic message.
-  get_stderr_file=$(mktemp -t sc-1p-get-err-XXXXXX)
-  op_rc=0
-  op item get "$ITEM" --vault "$VAULT" --format=json --reveal > "$fullitem" 2>"$get_stderr_file" || op_rc=$?
-  if [[ "$op_rc" -ne 0 ]]; then
-    echo "ADAPTER_ERROR: op item get --reveal failed (exit=$op_rc)" >&2
-    if [[ -s "$get_stderr_file" ]]; then
-      echo "  op stderr: $(tr '\n' ' ' < "$get_stderr_file" | cut -c1-500)" >&2
-    fi
-    rm -f "$get_stderr_file"
-    exit 7
-  fi
-  rm -f "$get_stderr_file"
+  op item get "$ITEM" --vault "$VAULT" --format=json --reveal > "$fullitem" 2>/dev/null \
+    || { echo "ADAPTER_ERROR: op item get --reveal failed" >&2; exit 7; }
 
   # Read the existing item from "$fullitem" (positional arg) AND the new value
   # from /dev/stdin via --rawfile — two separate inputs, no stdin conflict.
@@ -95,18 +91,8 @@ if op item get "$ITEM" --vault "$VAULT" --format=json >/dev/null 2>&1; then
     exit 7
   fi
 
-  del_stderr_file=$(mktemp -t sc-1p-del-err-XXXXXX)
-  op_rc=0
-  op item delete "$ITEM" --vault "$VAULT" --archive >/dev/null 2>"$del_stderr_file" || op_rc=$?
-  if [[ "$op_rc" -ne 0 ]]; then
-    echo "ADAPTER_ERROR: failed to archive existing item for rotation (exit=$op_rc)" >&2
-    if [[ -s "$del_stderr_file" ]]; then
-      echo "  op stderr: $(tr '\n' ' ' < "$del_stderr_file" | cut -c1-500)" >&2
-    fi
-    rm -f "$del_stderr_file"
-    exit 7
-  fi
-  rm -f "$del_stderr_file"
+  op item delete "$ITEM" --vault "$VAULT" --archive >/dev/null 2>&1 \
+    || { echo "ADAPTER_ERROR: failed to archive existing item for rotation" >&2; exit 7; }
 else
   # Create path: new item with just the target field.
   jq -n \
@@ -123,21 +109,7 @@ else
      }' > "$payload"
 fi
 
-# `op item create` echoes the new item JSON (values included) on stdout when it
-# succeeds — keep that going to /dev/null. Capture stderr separately so a failure
-# (bad category template ID, missing field, vault permission) shows the real op
-# message instead of a generic "op item create failed".
-create_stderr_file=$(mktemp -t sc-1p-create-err-XXXXXX)
-op_rc=0
-op item create --vault "$VAULT" --template "$payload" </dev/null >/dev/null 2>"$create_stderr_file" || op_rc=$?
-if [[ "$op_rc" -ne 0 ]]; then
-  echo "ADAPTER_ERROR: op item create failed (exit=$op_rc)" >&2
-  if [[ -s "$create_stderr_file" ]]; then
-    echo "  op stderr: $(tr '\n' ' ' < "$create_stderr_file" | cut -c1-500)" >&2
-  fi
-  rm -f "$create_stderr_file"
-  exit 7
-fi
-rm -f "$create_stderr_file"
+op item create --vault "$VAULT" --template "$payload" </dev/null >/dev/null 2>&1 \
+  || { echo "ADAPTER_ERROR: op item create failed" >&2; exit 7; }
 
 printf 'op://%s/%s/%s\n' "$VAULT" "$ITEM" "$FIELD"
