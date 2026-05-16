@@ -94,12 +94,14 @@ Use for Cloudflare Workers secrets.
 ### `coolify`
 
 ```bash
-bash capture.sh --target coolify --app-uuid <uuid> --key <ENV_VAR> [--build-time]
+bash capture.sh --target coolify --coolify-instance <alias> --app-uuid <uuid> --key <ENV_VAR> [--preview]
 ```
 
 Returns: `coolify-env:<uuid>#<key>`
 
-Uses Coolify REST directly (bypasses MCP — the MCP response echoes the value back into the transcript). Reads the Coolify URL + API token from the user's `~/.config/secret-capture/config.yaml`.
+Instance alias is looked up in the user's config under `defaults.coolify.instances.<alias>` (URL + API key source) — mirrors the n8n adapter's multi-instance shape. Use one alias per Coolify instance (e.g. `production`, `staging`, `dsh`).
+
+Uses Coolify REST directly (bypasses MCP — the MCP response echoes the value back into the transcript). The `--preview` flag scopes the env var to preview deploys when set.
 
 ### `n8n`
 

@@ -6,20 +6,25 @@
 # Stdout: coolify-env:<app-uuid>#<key>
 #
 # Config (~/.config/secret-capture/config.yaml):
-#   defaults.coolify.url            — Coolify base URL
-#   defaults.coolify.api_key_source — where to read the Coolify API token from
+#   defaults.coolify.instances.<alias>.url            — Coolify base URL for this instance
+#   defaults.coolify.instances.<alias>.api_key_source — where to read the Coolify API token from
+#
+# Multi-instance shape mirrors the n8n adapter. One alias per Coolify instance
+# (e.g. d1dx, dsh, cfr). Operators select the target via --coolify-instance.
 
 set -euo pipefail
 
 # shellcheck source=../lib/config.sh
 source "${SKILL_ROOT:?SKILL_ROOT not set}/scripts/lib/config.sh"
 
+INSTANCE=""
 APP_UUID=""
 KEY=""
 IS_PREVIEW="false"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --coolify-instance) INSTANCE="$2"; shift 2 ;;
     --app-uuid) APP_UUID="$2"; shift 2 ;;
     --key) KEY="$2"; shift 2 ;;
     --preview) IS_PREVIEW="true"; shift ;;
@@ -32,16 +37,17 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+[[ -z "$INSTANCE" ]] && { echo "USAGE_ERROR: --coolify-instance required (config alias under defaults.coolify.instances)" >&2; exit 2; }
 [[ -z "$APP_UUID" ]] && { echo "USAGE_ERROR: --app-uuid required" >&2; exit 2; }
 [[ -z "$KEY" ]]      && { echo "USAGE_ERROR: --key required" >&2; exit 2; }
 
 ROTATE="${ROTATE:-}"
 
-COOLIFY_URL=$(config_get "defaults.coolify.url")
-[[ -n "$COOLIFY_URL" ]] || { echo "CONFIG_ERROR: defaults.coolify.url not set" >&2; exit 9; }
+COOLIFY_URL=$(config_get "defaults.coolify.instances.${INSTANCE}.url")
+[[ -n "$COOLIFY_URL" ]] || { echo "CONFIG_ERROR: defaults.coolify.instances.${INSTANCE}.url not set" >&2; exit 9; }
 
-API_KEY_SOURCE=$(config_get "defaults.coolify.api_key_source")
-[[ -n "$API_KEY_SOURCE" ]] || { echo "CONFIG_ERROR: defaults.coolify.api_key_source not set" >&2; exit 9; }
+API_KEY_SOURCE=$(config_get "defaults.coolify.instances.${INSTANCE}.api_key_source")
+[[ -n "$API_KEY_SOURCE" ]] || { echo "CONFIG_ERROR: defaults.coolify.instances.${INSTANCE}.api_key_source not set" >&2; exit 9; }
 
 umask 077
 body=$(mktemp -t sc-coolify-body-XXXXXX)

@@ -63,10 +63,8 @@ _pf_coolify() {
     || { echo "ADAPTER_ERROR: 'jq' not found" >&2; return 7; }
   command -v yq >/dev/null 2>&1 \
     || { echo "ADAPTER_ERROR: 'yq' (Go version) required to read config — install: brew install yq" >&2; return 7; }
-  local url
-  url=$(config_get "defaults.coolify.url")
-  [[ -n "$url" ]] \
-    || { echo "CONFIG_ERROR: defaults.coolify.url is not set in $SC_CONFIG_FILE" >&2; return 9; }
+  # Instance-specific config (url + api_key_source) is validated by the adapter
+  # itself once --coolify-instance is parsed — same pattern as n8n above.
 }
 
 _pf_n8n() {

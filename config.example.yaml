@@ -44,10 +44,16 @@ defaults:
     # account_id: "your-account-id"
 
   coolify:
-    url: "https://coolify.example.com"
-    api_key_source: "keychain:coolify-api"
-    # Whether env vars are preview-scoped by default.
-    is_preview: false
+    # Multi-instance shape mirrors n8n below. Pick the target per-invocation via
+    # --coolify-instance <alias>. Add more instances (staging, client-specific) under
+    # the same map. The --preview flag is per-invocation; there is no per-instance default.
+    instances:
+      production:
+        url: "https://coolify.example.com"
+        api_key_source: "keychain:coolify-production-api"
+      staging:
+        url: "https://staging-coolify.example.com"
+        api_key_source: "env:COOLIFY_STAGING_API_KEY"
 
   n8n:
     instances:
