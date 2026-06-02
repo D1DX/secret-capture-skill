@@ -56,12 +56,14 @@ Use when the user will consume this secret from their machine (`op read ...`).
 ### `keychain`
 
 ```bash
-bash capture.sh --target keychain --service <service-name> --account <account> [--rotate]
+bash capture.sh --target keychain --service <service-name> --account <account> [--rotate] [--silent-read]
 ```
 
 Returns: `keychain:<service>`
 
 Use for macOS-local CLI tools or scripts that will read it via `security find-generic-password`.
+
+Pass `--silent-read` when a **background / non-interactive** process reads the secret (a cron job, an MCP-launch wrapper, any unattended reader). It opens the item's ACL partition list to Apple-signed CLI tools (`apple-tool:,apple:`) so `/usr/bin/security` can read the value without a blocking Keychain auth dialog. Without it, the first non-interactive read pops a GUI prompt that an unattended reader can't answer and fails with "auth prompt dismissed". Setting the ACL requires unlocking the keychain, so it prompts once for your login password at capture time (best-effort — the secret is still stored if you skip the prompt; only silent read is lost).
 
 ### `gh-secret`
 
