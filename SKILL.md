@@ -1,6 +1,6 @@
 ---
 name: secret-capture
-description: Capture a secret from the user via a hidden-input dialog and route it to exactly one destination (1Password, macOS Keychain, GitHub secret, Cloudflare Workers secret, Coolify env var, n8n credential, or a local .env file) without the value ever appearing in any tool result, log, or chat transcript. Auto-triggers whenever the agent needs a new credential, API key, token, password, or secret to configure a service, onboard an integration, set up an MCP, or rotate an existing credential. Use this every time you're about to say "paste your key here" — instead, invoke this skill.
+description: Capture a secret from the user via a hidden-input dialog (or pull it from an existing store with --from) and route it to exactly one destination (1Password, macOS Keychain, GitHub secret, Cloudflare Workers secret, Coolify env var, n8n credential, a local .env file, a remote SSH file, or an age-encrypted box keystore) without the value ever appearing in any tool result, log, or chat transcript. Auto-triggers whenever the agent needs a new credential, API key, token, password, or secret to configure a service, onboard an integration, set up an MCP, or rotate an existing credential. Use this every time you're about to say "paste your key here" — instead, invoke this skill.
 disable-model-invocation: false
 user-invocable: true
 argument-hint: "destination spec (e.g., '1password vault=Personal item=openai-key field=credential')"
@@ -32,10 +32,10 @@ Never store the same secret in two places.
 The skill is a bash script. Invoke via the Bash tool:
 
 ```bash
-bash ~/.claude/skills/secret-capture/scripts/capture.sh --target <target> [target-flags] [--rotate] [--expect <shape>]
+bash ~/.claude/skills/secret-capture/scripts/capture.sh --target <target> [target-flags] [--rotate] [--expect <shape>] [--from <op://ref|source-spec>]
 ```
 
-You pass only the destination metadata. You never pass, read, or handle the value. The script opens a hidden-input dialog, captures the value, pipes it directly to the destination, and returns a reference on stdout.
+You pass only the destination metadata. You never pass, read, or handle the value. By default the script opens a hidden-input dialog, captures the value, pipes it directly to the destination, and returns a reference on stdout. With `--from`, it pulls the value from an existing store instead of prompting (see [Sourcing the value with `--from`](#sourcing-the-value-with---from)).
 
 ## Targets
 
@@ -152,6 +152,45 @@ Use when you need to inject a secret into a remote server without reading it you
 **Security:** value never touches argv, env, or any shell variable. End-to-end pipe: local stdin → local temp (0600, shredded) → ssh stdin → remote `cat > .sc-new` → remote `mv`. Single quotes in the value (`file-kv` mode) are escaped via sed on the local side.
 
 **Idempotency:** checks the remote file before writing. `file-kv` checks for the `KEY=` prefix; `file-raw` checks for file existence. Duplicate → `DUPLICATE` (exit 6) unless `--rotate` is passed.
+
+### `keystore`
+
+```bash
+bash capture.sh --target keystore --service <service> --keystore-host <host> \
+  [--recipient <age1...>] [--keystore-dir <dir>] [--keystore-group <group>] \
+  [--ssh-user <user>] [--rotate] [--from <op://ref>]
+```
+
+Returns: `keystore:<target>:<dir>/<service>.age`
+
+Age-encrypts the value to a recipient **public** key and ships the encrypted blob to a remote keystore host over SSH, landing at `<dir>/<service>.age`. A separate runtime consumer (e.g. `keyrun`) decrypts it there with the matching age identity — this adapter only **provisions**.
+
+**Resolution (env or flag, nothing baked in):**
+- `--keystore-host` / `$KEYSTORE_HOST` — ssh host (required)
+- `--keystore-dir` / `$KEYSTORE_DIR` — remote dir (default `/etc/keystore`)
+- `--keystore-group` / `$KEYSTORE_GROUP` — when set, the blob is `0640 root:<group>` (group-readable by the consumer); else `0600` root-only
+- `--recipient` / `$KEYSTORE_RECIPIENT` / `$KEYSTORE_RECIPIENT_FILE` — the `age1...` recipient; falls back to reading `$KEYSTORE_DIR/recipient.pub` off the host
+
+**Security:** the value is age-encrypted **locally** before it leaves the machine — only ciphertext crosses the network. Plaintext never touches argv, env, a shell variable, or the remote host in the clear. Encrypting needs only the public recipient (no secret to provision).
+
+**Idempotency:** an existing `<service>.age` is left intact; pass `--rotate` to overwrite (`DUPLICATE`, exit 6, otherwise).
+
+> Tip: if you provision many keys to one keystore, wrap this adapter in a small script that exports your `KEYSTORE_*` defaults so callers just run `provision <service> [--from op://…]`.
+
+## Sourcing the value with `--from`
+
+By default the value comes from the hidden-input dialog. Pass `--from` to pull it from an existing store instead — useful for shipping a secret that already lives somewhere (e.g. 1Password → keystore) without a human re-typing it:
+
+```bash
+# bare op:// reference (convenience — mapped to the op: scheme)
+bash capture.sh --target keystore --service vultr --keystore-host <host> \
+  --from op://Vault/vultr-api/credential
+
+# any source-spec also works: op: / keychain: / env: / file: / command:
+bash capture.sh --target env-file --file .env --key TOKEN --from keychain:my-token
+```
+
+The pulled value is routed through the same flow as a dialog capture: optional `--expect` validation still applies (no interactive retry — a fixed source either matches or returns `FORMAT_MISMATCH`), a single trailing newline is stripped (so an `op read` value arrives clean), and the value is shredded on exit. An empty resolution returns `AUTH_FAIL` (exit 8).
 
 ## Rotation
 

@@ -14,6 +14,7 @@ preflight_check() {
     n8n) _pf_n8n ;;
     env-file) : ;;
     ssh) _pf_ssh ;;
+    keystore) _pf_keystore ;;
     *) echo "USAGE_ERROR: no preflight for target '$target'" >&2; return 2 ;;
   esac
 }
@@ -21,6 +22,13 @@ preflight_check() {
 _pf_ssh() {
   command -v ssh >/dev/null 2>&1 \
     || { echo "ADAPTER_ERROR: 'ssh' not found" >&2; return 7; }
+}
+
+_pf_keystore() {
+  command -v ssh >/dev/null 2>&1 \
+    || { echo "ADAPTER_ERROR: 'ssh' not found" >&2; return 7; }
+  command -v age >/dev/null 2>&1 \
+    || { echo "ADAPTER_ERROR: 'age' not found (install: brew install age)" >&2; return 7; }
 }
 
 _pf_1password() {

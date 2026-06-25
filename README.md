@@ -40,6 +40,10 @@ The problem this solves: agents routinely need to configure services with API ke
 | `coolify` | Coolify application env var (via REST) | Coolify instance URL + API token |
 | `n8n` | n8n credential (via REST) | n8n instance URL + API key |
 | `env-file` | Local `.env` file (mode 0600) | — |
+| `ssh` | A file on a remote host (dotenv `KEY=` or raw) via SSH | `ssh` + an ssh-agent |
+| `keystore` | An age-encrypted blob on a remote keystore host via SSH | `ssh` + `age` + a recipient public key |
+
+Any target can take its value from an existing store instead of the dialog with `--from <op://ref | source-spec>` (`op:` / `keychain:` / `env:` / `file:` / `command:`).
 
 More destinations are planned (Vercel, Netlify, Fly.io, HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager, Kubernetes, Docker) — PRs welcome.
 
@@ -150,6 +154,8 @@ Every adapter emits a **reference** — never the value:
 | `coolify` | `coolify-env:<app-uuid>#<key>` |
 | `n8n` | `n8n-cred:<name> (id=<id>)` |
 | `env-file` | `env-file:<path>#<key>` |
+| `ssh` | `file-kv`: `ssh-kv:<user>@<host>:<path>#<key>` · `file-raw`: `ssh-file:<user>@<host>:<path>` |
+| `keystore` | `keystore:<target>:<dir>/<service>.age` |
 
 The agent uses the reference to consume the secret later (e.g., `op read "op://Personal/anthropic-key/credential"`), without the skill ever holding the value in memory again.
 

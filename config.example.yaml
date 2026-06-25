@@ -22,6 +22,7 @@ adapters:
     - wrangler
     - env-file
     - ssh
+    - keystore
 
 defaults:
   1password:
@@ -68,6 +69,16 @@ defaults:
     # Used when --file is not passed.
     default_path: ".env"
     mode: "0600"
+
+  # keystore — age-encrypt the value to a recipient PUBLIC key and ship the encrypted
+  # blob to a remote keystore host over SSH (a runtime consumer decrypts it there with
+  # the matching age identity). This adapter is ENV/FLAG-driven, not config-driven:
+  #   KEYSTORE_HOST           ssh host          (or --keystore-host)   [required]
+  #   KEYSTORE_DIR            remote dir        (or --keystore-dir)    [default /etc/keystore]
+  #   KEYSTORE_GROUP          remote group      (or --keystore-group)  [optional; 0640 root:<group>, else 0600]
+  #   KEYSTORE_RECIPIENT      age1... pubkey    (or --recipient)
+  #   KEYSTORE_RECIPIENT_FILE file holding it   (fallback; else read $KEYSTORE_DIR/recipient.pub off the host)
+  # Pair with --from op://... (or any source-spec) to ship an existing secret non-interactively.
 
 dialog:
   # Seconds before osascript auto-dismisses. macOS default is 120.

@@ -35,9 +35,12 @@ usage() {
 secret-capture — capture a secret via hidden-input dialog and route it to a destination.
 
 Usage:
-  capture.sh --target <target> [target-flags] [--rotate] [--expect <shape>] [--prompt <label>]
+  capture.sh --target <target> [target-flags] [--rotate] [--expect <shape>] [--prompt <label>] [--from <op://ref|source-spec>]
 
-Targets: 1password | keychain | gh-secret | wrangler | coolify | n8n | env-file | ssh
+Targets: 1password | keychain | gh-secret | wrangler | coolify | n8n | env-file | ssh | keystore
+
+--from sources the value from an existing store instead of the hidden-input dialog.
+Accepts a bare op:// reference or a source-spec (op:/keychain:/env:/file:/command:).
 
 See SKILL.md for target-specific flags, or the README for examples.
 USAGE
@@ -47,6 +50,7 @@ TARGET=""
 ROTATE=""
 EXPECT=""
 PROMPT_LABEL=""
+FROM=""
 ADAPTER_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -55,6 +59,7 @@ while [[ $# -gt 0 ]]; do
     --rotate) ROTATE="1"; shift ;;
     --expect) EXPECT="$2"; shift 2 ;;
     --prompt) PROMPT_LABEL="$2"; shift 2 ;;
+    --from) FROM="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     --*)
       if [[ $# -ge 2 && "${2:0:2}" != "--" ]]; then
@@ -117,10 +122,26 @@ fi
 
 umask 077
 valfile=$(mktemp -t sc-value-XXXXXX)
-cleanup_value() { shred -u "$valfile" 2>/dev/null || rm -f "$valfile"; }
+fromfile=$(mktemp -t sc-from-XXXXXX)
+cleanup_value() { shred -u "$valfile" "$fromfile" 2>/dev/null || rm -f "$valfile" "$fromfile"; }
 trap cleanup_value EXIT
 
-dialog_capture "$PROMPT_LABEL" > "$valfile" || exit $?
+if [[ -n "$FROM" ]]; then
+  # Pull mode — source the value from an existing store instead of prompting.
+  # A bare op:// reference is accepted as a convenience (mapped to the op: scheme);
+  # any resolve_source spec (op:/keychain:/env:/file:/command:) also works.
+  # A single trailing newline is stripped so the adapter receives the same clean
+  # value the dialog path delivers (op read appends one).
+  from_spec="$FROM"
+  case "$from_spec" in op://*) from_spec="op:$from_spec" ;; esac
+  if ! resolve_source "$from_spec" > "$fromfile" 2>/dev/null || [[ ! -s "$fromfile" ]]; then
+    echo "AUTH_FAIL: --from source '$FROM' resolved to empty (check the reference / auth)" >&2
+    exit 8
+  fi
+  awk 'BEGIN { RS="\x00" } { sub(/\n+$/, ""); printf "%s", $0 }' "$fromfile" > "$valfile"
+else
+  dialog_capture "$PROMPT_LABEL" > "$valfile" || exit $?
+fi
 
 if [[ -n "$EXPECT" ]]; then
   # A2 — one retry on FORMAT_MISMATCH. Rationale: a single stray character
@@ -129,8 +150,13 @@ if [[ -n "$EXPECT" ]]; then
   # Two attempts total — first failure reopens the dialog, second failure
   # exits FORMAT_MISMATCH.
   valfile_validated=$(mktemp -t sc-value-v-XXXXXX)
-  trap 'shred -u "$valfile" "$valfile_validated" 2>/dev/null || rm -f "$valfile" "$valfile_validated"' EXIT
+  trap 'shred -u "$valfile" "$valfile_validated" "$fromfile" 2>/dev/null || rm -f "$valfile" "$valfile_validated" "$fromfile"' EXIT
   if ! validate_and_forward "$EXPECT" < "$valfile" > "$valfile_validated" 2>/dev/null; then
+    if [[ -n "$FROM" ]]; then
+      # Pull mode has no interactive retry — the source value is fixed.
+      echo "FORMAT_MISMATCH: --from value does not match '$EXPECT'" >&2
+      exit 5
+    fi
     echo "FORMAT_MISMATCH: value does not match '$EXPECT' — reopening dialog once" >&2
     dialog_capture "$PROMPT_LABEL" > "$valfile" || exit $?
     validate_and_forward "$EXPECT" < "$valfile" > "$valfile_validated" || exit $?
