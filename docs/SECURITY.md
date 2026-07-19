@@ -52,7 +52,7 @@ Bash's `xtrace` mode prints every expanded command — including variable values
 
 ## Status
 
-As of commit `9a08853`, the two bugs surfaced during initial smoke testing (CANCELLED-pipe allowed adapter to run with empty stdin; macOS Automation permission required for System Events) are **resolved**. No outstanding critical implementation risks remain in v1. Residual risks below are inherent to the local-secret-capture threat model, not implementation defects.
+The two bugs surfaced during initial smoke testing (CANCELLED-pipe allowed adapter to run with empty stdin; macOS Automation permission required for System Events) are **resolved**. No outstanding critical implementation risks remain in v1. Residual risks below are inherent to the local-secret-capture threat model, not implementation defects.
 
 ## Residual risks
 

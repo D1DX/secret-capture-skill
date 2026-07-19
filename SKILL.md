@@ -2,7 +2,7 @@
 name: secret-capture
 description: Capture a secret from the user via a hidden-input dialog (or pull it from an existing store with --from) and route it to exactly one destination (1Password, macOS Keychain, GitHub secret, Cloudflare Workers secret, Coolify env var, n8n credential, a local .env file, a remote SSH file, or an age-encrypted box keystore) without the value ever appearing in any tool result, log, or chat transcript. Auto-triggers whenever the agent needs a new credential, API key, token, password, or secret to configure a service, onboard an integration, set up an MCP, or rotate an existing credential. Use this every time you're about to say "paste your key here" — instead, invoke this skill.
 disable-model-invocation: false
-user-invocable: true
+user-invokable: true
 argument-hint: "destination spec (e.g., '1password vault=Personal item=openai-key field=credential')"
 ---
 

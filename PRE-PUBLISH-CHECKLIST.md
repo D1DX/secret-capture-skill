@@ -45,9 +45,9 @@ Optional: `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1 is the usual boilerplat
 
 - [ ] `grep -r "D1DX" .` — only the install URL should reference D1DX (`D1DX/secret-capture-skill`), nothing else
 - [ ] `grep -r "d1dx.tools\|d1dx.com\|d1dx.xyz" .` — should be empty
-- [ ] `grep -r "Employee\|BRURIA\|CBRN\|IMAD\|D1DX Finance\|D1DX Secret" .` — should be empty (vault names)
+- [ ] grep for every internal vault + client codename — pull the current list from the private vault inventory at run time; never hardcode the names in this tracked file — should be empty
 - [ ] `grep -r "daniel@d1dx\|daniel.rudaev" .` — should be empty
-- [ ] `grep -r "coolify-d1dx\|n8n-d1dx\|airtable-d1dx" .` — should be empty (D1DX item names)
+- [ ] grep for internal credential item names (`<service>-<tenant>` pattern, from the same private inventory) — should be empty
 
 ## Functional verification
 
