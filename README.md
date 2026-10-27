@@ -52,7 +52,7 @@ More destinations are planned (Vercel, Netlify, Fly.io, HashiCorp Vault, AWS Sec
 - **macOS** (osascript dialog). Linux / Windows support is planned — see [Roadmap](#roadmap). No Automation permission required — dialog runs inside osascript itself, not via System Events.
 - `bash` ≥ 4 (or `zsh`), `jq`, `curl`.
 - **`yq` (Go version, mikefarah/yq)** — required for: `coolify` and `n8n` adapters (read runtime config), `1password` adapter (read user defaults), and `--expect` format validation (reads `patterns/common.yaml`). The `keychain`, `gh-secret`, `wrangler`, and `env-file` adapters work without `yq`. Install via `brew install yq`.
-- `python3` — required by the `keychain` adapter, which hands the value to `security -i` on stdin (the `security -w` prompt cuts a value at 128 bytes). A value holding whitespace, `"` or `\` is refused.
+- `python3` — required by the `keychain` adapter, which hands the value to `security -i` on stdin (the `security -w` prompt cuts a value at 128 bytes). A value holding a line break is refused.
 - Per-destination tooling (install the ones you plan to use):
   - `op` — 1Password CLI (`brew install 1password-cli`)
   - `gh` — GitHub CLI (`brew install gh`)

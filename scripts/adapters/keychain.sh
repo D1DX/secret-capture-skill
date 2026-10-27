@@ -46,7 +46,8 @@ fi
 # SC_ACCOUNT and SC_SERVICE reach python via env — they are NOT secrets. The value is read
 # from stdin and handed to `security -i` as one command line on ITS stdin, so it lives only
 # in python's memory and that pipe. The interactive `-w` prompt is not used: it cuts a
-# password at 128 bytes. A value `security -i` cannot quote (whitespace, `"`, `\`) is refused.
+# password at 128 bytes. The value is double-quoted with `\` and `"` escaped; a line break
+# cannot ride one command line and is refused.
 set +e
 SC_ACCOUNT="$ACCOUNT" SC_SERVICE="$SERVICE" python3 -c '
 import os, subprocess, sys
@@ -55,10 +56,11 @@ if val.endswith("\n"):
     val = val[:-1]
 if not val:
     sys.exit(8)
-if any(c in val for c in "\"\\ \t\r\n"):
+if "\n" in val or "\r" in val:
     sys.exit(9)
-line = "add-generic-password -a \"%s\" -s \"%s\" -U -w \"%s\"\n" % (
-    os.environ["SC_ACCOUNT"], os.environ["SC_SERVICE"], val)
+quote = lambda s: "\"%s\"" % s.replace("\\", "\\\\").replace("\"", "\\\"")
+line = "add-generic-password -a %s -s %s -U -w %s\n" % (
+    quote(os.environ["SC_ACCOUNT"]), quote(os.environ["SC_SERVICE"]), quote(val))
 out = subprocess.run(["/usr/bin/security", "-i"], input=line, text=True, capture_output=True)
 sys.exit(0 if out.returncode == 0 and not out.stderr.strip() else 7)
 ' >/dev/null 2>&1
@@ -67,7 +69,7 @@ set -e
 case "$rc" in
   0) ;;
   8) echo "ADAPTER_ERROR: empty value; nothing stored" >&2; exit 7 ;;
-  9) echo "ADAPTER_ERROR: value holds whitespace, a quote or a backslash; the keychain adapter cannot store it" >&2; exit 7 ;;
+  9) echo "ADAPTER_ERROR: value holds a line break; the keychain adapter cannot store it" >&2; exit 7 ;;
   *) echo "ADAPTER_ERROR: 'security add-generic-password' failed" >&2; exit 7 ;;
 esac
 
