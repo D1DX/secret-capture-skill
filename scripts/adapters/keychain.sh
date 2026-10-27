@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Adapter: macOS Keychain (login keychain).
-# Uses `expect` to drive `security add-generic-password -w` interactively so the value
-# never appears on argv of the `security` process. `expect` is preinstalled on macOS.
+# Feeds `security -i` the add-generic-password command on stdin so the value never appears
+# on argv of the `security` process.
 #
 # Flags:
 #   --service <name>   keychain service name (required)
@@ -43,31 +43,33 @@ if security find-generic-password -s "$SERVICE" -a "$ACCOUNT" >/dev/null 2>&1; t
   fi
 fi
 
-# SC_ACCOUNT and SC_SERVICE reach the expect process via env — they are NOT secrets.
-# The value itself is read from expect's stdin and only lives in expect's Tcl memory.
-if ! SC_ACCOUNT="$ACCOUNT" SC_SERVICE="$SERVICE" expect <<'TCL' >/dev/null 2>&1
-log_user 0
-set acc $env(SC_ACCOUNT)
-set svc $env(SC_SERVICE)
-set val [read stdin]
-regsub {\n$} $val {} val
-spawn -noecho /usr/bin/security add-generic-password -a $acc -s $svc -U -w
-expect {
-  -re {password (data )?for (new|existing) item:} {}
-  timeout { exit 7 }
-}
-send -- "$val\r"
-expect {
-  -re {retype password for (new|existing) item:} { send -- "$val\r"; exp_continue }
-  eof {}
-  timeout { exit 7 }
-}
-set val ""
-TCL
-then
-  echo "ADAPTER_ERROR: expect-driven 'security add-generic-password' failed" >&2
-  exit 7
-fi
+# SC_ACCOUNT and SC_SERVICE reach python via env — they are NOT secrets. The value is read
+# from stdin and handed to `security -i` as one command line on ITS stdin, so it lives only
+# in python's memory and that pipe. The interactive `-w` prompt is not used: it cuts a
+# password at 128 bytes. A value `security -i` cannot quote (whitespace, `"`, `\`) is refused.
+set +e
+SC_ACCOUNT="$ACCOUNT" SC_SERVICE="$SERVICE" python3 -c '
+import os, subprocess, sys
+val = sys.stdin.read()
+if val.endswith("\n"):
+    val = val[:-1]
+if not val:
+    sys.exit(8)
+if any(c in val for c in "\"\\ \t\r\n"):
+    sys.exit(9)
+line = "add-generic-password -a \"%s\" -s \"%s\" -U -w \"%s\"\n" % (
+    os.environ["SC_ACCOUNT"], os.environ["SC_SERVICE"], val)
+out = subprocess.run(["/usr/bin/security", "-i"], input=line, text=True, capture_output=True)
+sys.exit(0 if out.returncode == 0 and not out.stderr.strip() else 7)
+' >/dev/null 2>&1
+rc=$?
+set -e
+case "$rc" in
+  0) ;;
+  8) echo "ADAPTER_ERROR: empty value; nothing stored" >&2; exit 7 ;;
+  9) echo "ADAPTER_ERROR: value holds whitespace, a quote or a backslash; the keychain adapter cannot store it" >&2; exit 7 ;;
+  *) echo "ADAPTER_ERROR: 'security add-generic-password' failed" >&2; exit 7 ;;
+esac
 
 # --silent-read: open the item's ACL partition list to Apple-signed CLI tools so a
 # background reader (e.g. /usr/bin/security inside an MCP-launch wrapper) gets the value
